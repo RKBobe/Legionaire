@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { GameBoard } from './components/GameBoard';
-import { CommandPanel } from './components/CommandPanel';
 import { UnitRoster } from './components/UnitRoster';
 import { GameHUD } from './components/GameHUD';
 import { CombatResolver } from './components/CombatResolver';
 import { CombatView } from './components/CombatView';
 
-interface Unit {
+// Exporting the Unit type so other components can use it
+export interface Unit {
   id: string;
   name: string;
   type: 'legionnaire' | 'hastati' | 'triarii' | 'archer';
@@ -15,6 +15,7 @@ interface Unit {
   morale: number;
   position: { x: number; y: number };
   isSelected: boolean;
+  abilityUsed?: boolean; // New property to track ability usage
 }
 
 export default function App() {
@@ -27,7 +28,7 @@ export default function App() {
       maxHealth: 100,
       morale: 85,
       position: { x: 2, y: 3 },
-      isSelected: false
+      isSelected: false,
     },
     {
       id: '2',
@@ -37,7 +38,8 @@ export default function App() {
       maxHealth: 100,
       morale: 78,
       position: { x: 3, y: 3 },
-      isSelected: false
+      isSelected: false,
+      abilityUsed: false, // Initialize for our new ability
     },
     {
       id: '3',
@@ -47,7 +49,7 @@ export default function App() {
       maxHealth: 100,
       morale: 92,
       position: { x: 4, y: 3 },
-      isSelected: false
+      isSelected: false,
     },
     {
       id: '4',
@@ -57,7 +59,7 @@ export default function App() {
       maxHealth: 80,
       morale: 65,
       position: { x: 1, y: 4 },
-      isSelected: false
+      isSelected: false,
     },
     // Enemy units for testing combat
     {
@@ -68,7 +70,7 @@ export default function App() {
       maxHealth: 100,
       morale: 70,
       position: { x: 8, y: 8 },
-      isSelected: false
+      isSelected: false,
     },
     {
       id: 'enemy2',
@@ -78,10 +80,11 @@ export default function App() {
       maxHealth: 80,
       morale: 60,
       position: { x: 9, y: 7 },
-      isSelected: false
+      isSelected: false,
     }
   ]);
-
+  const [movableTiles, setMovableTiles] = useState<{ x: number; y: number }[]>([]);
+  const [attackableTiles, setAttackableTiles] = useState<Unit[]>([]); // New state for ability targets
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [playerRank, setPlayerRank] = useState('Decanus');
   const [leadership, setLeadership] = useState(12);
@@ -104,6 +107,10 @@ export default function App() {
       ...unit,
       isSelected: unit.id === unitId ? !unit.isSelected : false
     })));
+    // Deselect actions when a new unit is selected
+    setSelectedAction(null);
+    setMovableTiles([]);
+    setAttackableTiles([]);
   }, []);
 
   const handleSelectAll = useCallback(() => {
@@ -114,52 +121,93 @@ export default function App() {
   }, []);
 
   const handleMoveUnit = useCallback((unitId: string, newPosition: { x: number; y: number }) => {
-    setUnits(prev => prev.map(unit => 
-      unit.id === unitId 
+    setUnits(prev => prev.map(unit =>
+      unit.id === unitId
         ? { ...unit, position: newPosition }
         : unit
     ));
     setSelectedAction(null);
+    setMovableTiles([]);
     
-    // Check for combat encounters
     const movedUnit = units.find(u => u.id === unitId);
-    const nearbyEnemies = units.filter(u => 
-      u.id !== unitId && 
-      Math.abs(u.position.x - newPosition.x) <= 1 && 
+    const nearbyEnemies = units.filter(u =>
+      u.id !== unitId && !u.id.startsWith('enemy') && // Simple team check
+      Math.abs(u.position.x - newPosition.x) <= 1 &&
       Math.abs(u.position.y - newPosition.y) <= 1
     );
     
     if (nearbyEnemies.length > 0 && movedUnit) {
-      // Trigger combat
       setCombatData({ attacker: movedUnit, defender: nearbyEnemies[0] });
       setCombatActive(true);
     }
     
-    // Gain experience for successful movement
     setExperience(prev => Math.min(maxExperience, prev + 5));
   }, [maxExperience, units]);
 
   const handleActionSelect = useCallback((action: string) => {
-    setSelectedAction(selectedAction === action ? null : action);
-  }, [selectedAction]);
+    const newAction = selectedAction === action ? null : action;
+    setSelectedAction(newAction);
 
-  const handleFormationSelect = useCallback((formation: string) => {
-    // Implement formation logic
-    console.log(`Formation selected: ${formation}`);
-    if (selectedUnit) {
-      setUnits(prev => prev.map(unit => 
-        unit.isSelected 
-          ? { ...unit, morale: Math.min(100, unit.morale + 5) }
-          : unit
-      ));
+    // Clear all highlights initially
+    setMovableTiles([]);
+    setAttackableTiles([]);
+
+    if (newAction === 'move' && selectedUnit) {
+      const range = 2;
+      const tiles = [];
+      for (let x = -range; x <= range; x++) {
+        for (let y = -range; y <= range; y++) {
+          if (Math.abs(x) + Math.abs(y) <= range) {
+            const newX = selectedUnit.position.x + x;
+            const newY = selectedUnit.position.y + y;
+            if (newX >= 0 && newX < 12 && newY >= 0 && newY < 12) { // Assuming 12x12 grid now
+              tiles.push({ x: newX, y: newY });
+            }
+          }
+        }
+      }
+      setMovableTiles(tiles);
+    } else if (newAction === 'pila_toss' && selectedUnit) {
+      const attackRange = 4;
+      // Find enemy units within range (simple check for now, not line of sight)
+      const targets = units.filter(unit => 
+        // A simple check to see if a unit is an enemy
+        !unit.id.startsWith('enemy') !== !selectedUnit.id.startsWith('enemy') &&
+        Math.abs(unit.position.x - selectedUnit.position.x) + 
+        Math.abs(unit.position.y - selectedUnit.position.y) <= attackRange
+      );
+      setAttackableTiles(targets);
     }
-  }, [selectedUnit]);
+  }, [selectedAction, selectedUnit, units]);
+  
+  // New handler for using an ability on a target
+  const handleAbilityUse = useCallback((targetUnit: Unit) => {
+    if (!selectedUnit || !selectedAction) return;
+    
+    if (selectedAction === 'pila_toss') {
+      console.log(`${selectedUnit.name} throws a pila at ${targetUnit.name}`);
+      const damage = 25; // Pila are powerful
+      
+      setUnits(prevUnits => prevUnits.map(u => {
+        if (u.id === targetUnit.id) {
+          return { ...u, health: Math.max(0, u.health - damage) };
+        }
+        if (u.id === selectedUnit.id) {
+          return { ...u, abilityUsed: true };
+        }
+        return u;
+      }));
+    }
+    
+    // Reset actions and highlights after ability use
+    setSelectedAction(null);
+    setAttackableTiles([]);
+  }, [selectedUnit, selectedAction]);
 
   const handleEndTurn = useCallback(() => {
     setTurnNumber(prev => prev + 1);
     setMissionProgress(prev => Math.min(100, prev + 5));
     
-    // Random events and unit status updates
     setUnits(prev => prev.map(unit => ({
       ...unit,
       morale: Math.max(20, Math.min(100, unit.morale + (Math.random() > 0.5 ? 1 : -1))),
@@ -167,16 +215,14 @@ export default function App() {
     })));
     
     setSelectedAction(null);
-  }, []);
-
-  const handlePauseGame = useCallback(() => {
-    console.log('Game paused');
+    setMovableTiles([]);
+    setAttackableTiles([]);
   }, []);
 
   const handleCombatComplete = useCallback((result: any) => {
     const { attackerDamage, defenderDamage, attackerMoraleChange, defenderMoraleChange } = result;
     
-    setUnits(prev => prev.map(unit => {
+    setUnits(prev => prev.map((unit: Unit) => {
       if (unit.id === combatData.attacker?.id) {
         return {
           ...unit,
@@ -194,30 +240,16 @@ export default function App() {
       return unit;
     }));
 
-    // Gain experience from combat
     setExperience(prev => Math.min(maxExperience, prev + 15));
     
     setCombatActive(false);
-    setCombatViewActive(true); // Enter combat view
+    setCombatViewActive(true);
   }, [combatData, maxExperience]);
-
-  const handleCombatCancel = useCallback(() => {
-    setCombatActive(false);
-    setCombatData({ attacker: null, defender: null });
-  }, []);
-
-  const handleExitCombatView = useCallback(() => {
-    setCombatViewActive(false);
-    setCombatData({ attacker: null, defender: null });
-  }, []);
 
   const handleCombatAction = useCallback((action: string) => {
     console.log(`Combat action: ${action}`);
-    // Handle combat actions like attack, defend, special moves
-    
-    // For now, simulate action effects
     if (action === 'attack') {
-      setUnits(prev => prev.map(unit => {
+      setUnits(prev => prev.map((unit: Unit) => {
         if (unit.id === combatData.defender?.id) {
           return {
             ...unit,
@@ -231,7 +263,6 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col bg-stone-100">
-      {/* Game HUD */}
       <GameHUD
         playerRank={playerRank}
         leadership={leadership}
@@ -241,21 +272,12 @@ export default function App() {
         missionObjective={missionObjective}
         missionProgress={missionProgress}
         onEndTurn={handleEndTurn}
-        onPauseGame={handlePauseGame}
+        onPauseGame={() => console.log('Game paused')}
       />
 
-      {/* Main Game Area */}
-      <div className="flex-1 flex gap-4 p-4">
-        {/* Left Panel - Command & Roster */}
+      <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+        {/* Left Panel - Roster */}
         <div className="w-80 space-y-4">
-          <CommandPanel
-            selectedUnit={selectedUnit}
-            selectedAction={selectedAction}
-            onActionSelect={handleActionSelect}
-            onFormationSelect={handleFormationSelect}
-            playerRank={playerRank}
-            leadership={leadership}
-          />
           <UnitRoster
             units={units}
             onUnitSelect={handleUnitSelect}
@@ -263,17 +285,21 @@ export default function App() {
           />
         </div>
 
-        {/* Center - Game Board */}
-        <div className="flex-1 flex items-center justify-center">
+        {/* Center - Game Board Area */}
+        <div className="flex-1 flex items-center justify-center relative">
           <GameBoard
             units={units}
             onUnitSelect={handleUnitSelect}
             onMoveUnit={handleMoveUnit}
             selectedAction={selectedAction}
+            movableTiles={movableTiles}
+            attackableTiles={attackableTiles}
+            onAbilityUse={handleAbilityUse}
+            onActionSelect={handleActionSelect}
           />
         </div>
 
-        {/* Right Panel - Additional Info */}
+        {/* Right Panel - Campaign Status */}
         <div className="w-80 bg-gradient-to-b from-stone-200 to-stone-300 rounded-lg p-4 border-2 border-stone-400">
           <h3 className="font-bold mb-4 flex items-center gap-2">
             <span className="text-2xl">📜</span>
@@ -288,7 +314,7 @@ export default function App() {
               <div className="font-medium">Legion Status</div>
               <div className="text-gray-600">
                 Units: {units.length}/10<br/>
-                Average Morale: {Math.round(units.reduce((acc, unit) => acc + unit.morale, 0) / units.length)}%<br/>
+                Average Morale: {Math.round(units.reduce((acc: number, unit: Unit) => acc + unit.morale, 0) / units.length)}%<br/>
                 Casualties: 0
               </div>
             </div>
@@ -302,21 +328,19 @@ export default function App() {
         </div>
       </div>
 
-      {/* Combat Resolver Modal */}
       <CombatResolver
         isActive={combatActive}
         attacker={combatData.attacker}
         defender={combatData.defender}
         onCombatComplete={handleCombatComplete}
-        onCancel={handleCombatCancel}
+        onCancel={() => setCombatActive(false)}
       />
 
-      {/* 3D Combat View */}
       <CombatView
         isActive={combatViewActive}
         attacker={combatData.attacker}
         defender={combatData.defender}
-        onExitCombat={handleExitCombatView}
+        onExitCombat={() => setCombatViewActive(false)}
         onCombatAction={handleCombatAction}
       />
     </div>
