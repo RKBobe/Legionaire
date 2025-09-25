@@ -84,7 +84,7 @@ export default function App() {
     }
   ]);
   const [movableTiles, setMovableTiles] = useState<{ x: number; y: number }[]>([]);
-  const [attackableTiles, setAttackableTiles] = useState<Unit[]>([]); // New state for ability targets
+  const [attackableTiles, setAttackableTiles] = useState<Unit[]>([]);
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [playerRank, setPlayerRank] = useState('Decanus');
   const [leadership, setLeadership] = useState(12);
@@ -107,7 +107,6 @@ export default function App() {
       ...unit,
       isSelected: unit.id === unitId ? !unit.isSelected : false
     })));
-    // Deselect actions when a new unit is selected
     setSelectedAction(null);
     setMovableTiles([]);
     setAttackableTiles([]);
@@ -122,16 +121,14 @@ export default function App() {
 
   const handleMoveUnit = useCallback((unitId: string, newPosition: { x: number; y: number }) => {
     setUnits(prev => prev.map(unit =>
-      unit.id === unitId
-        ? { ...unit, position: newPosition }
-        : unit
+      unit.id === unitId ? { ...unit, position: newPosition } : unit
     ));
     setSelectedAction(null);
     setMovableTiles([]);
     
     const movedUnit = units.find(u => u.id === unitId);
     const nearbyEnemies = units.filter(u =>
-      u.id !== unitId && !u.id.startsWith('enemy') && // Simple team check
+      u.id !== unitId && !u.id.startsWith('enemy') &&
       Math.abs(u.position.x - newPosition.x) <= 1 &&
       Math.abs(u.position.y - newPosition.y) <= 1
     );
@@ -148,7 +145,6 @@ export default function App() {
     const newAction = selectedAction === action ? null : action;
     setSelectedAction(newAction);
 
-    // Clear all highlights initially
     setMovableTiles([]);
     setAttackableTiles([]);
 
@@ -160,7 +156,7 @@ export default function App() {
           if (Math.abs(x) + Math.abs(y) <= range) {
             const newX = selectedUnit.position.x + x;
             const newY = selectedUnit.position.y + y;
-            if (newX >= 0 && newX < 12 && newY >= 0 && newY < 12) { // Assuming 12x12 grid now
+            if (newX >= 0 && newX < 12 && newY >= 0 && newY < 12) {
               tiles.push({ x: newX, y: newY });
             }
           }
@@ -169,9 +165,7 @@ export default function App() {
       setMovableTiles(tiles);
     } else if (newAction === 'pila_toss' && selectedUnit) {
       const attackRange = 4;
-      // Find enemy units within range (simple check for now, not line of sight)
       const targets = units.filter(unit => 
-        // A simple check to see if a unit is an enemy
         !unit.id.startsWith('enemy') !== !selectedUnit.id.startsWith('enemy') &&
         Math.abs(unit.position.x - selectedUnit.position.x) + 
         Math.abs(unit.position.y - selectedUnit.position.y) <= attackRange
@@ -180,26 +174,18 @@ export default function App() {
     }
   }, [selectedAction, selectedUnit, units]);
   
-  // New handler for using an ability on a target
   const handleAbilityUse = useCallback((targetUnit: Unit) => {
     if (!selectedUnit || !selectedAction) return;
     
     if (selectedAction === 'pila_toss') {
-      console.log(`${selectedUnit.name} throws a pila at ${targetUnit.name}`);
-      const damage = 25; // Pila are powerful
-      
-      setUnits(prevUnits => prevUnits.map(u => {
-        if (u.id === targetUnit.id) {
-          return { ...u, health: Math.max(0, u.health - damage) };
-        }
-        if (u.id === selectedUnit.id) {
-          return { ...u, abilityUsed: true };
-        }
-        return u;
-      }));
+      setCombatData({ attacker: selectedUnit, defender: targetUnit });
+      setCombatActive(true);
+
+      setUnits(prevUnits => prevUnits.map(u => 
+        u.id === selectedUnit.id ? { ...u, abilityUsed: true } : u
+      ));
     }
     
-    // Reset actions and highlights after ability use
     setSelectedAction(null);
     setAttackableTiles([]);
   }, [selectedUnit, selectedAction]);
@@ -224,18 +210,10 @@ export default function App() {
     
     setUnits(prev => prev.map((unit: Unit) => {
       if (unit.id === combatData.attacker?.id) {
-        return {
-          ...unit,
-          health: Math.max(0, unit.health - attackerDamage),
-          morale: Math.max(0, Math.min(100, unit.morale + attackerMoraleChange))
-        };
+        return { ...unit, health: Math.max(0, unit.health - attackerDamage), morale: Math.max(0, Math.min(100, unit.morale + attackerMoraleChange)) };
       }
       if (unit.id === combatData.defender?.id) {
-        return {
-          ...unit,
-          health: Math.max(0, unit.health - defenderDamage),
-          morale: Math.max(0, Math.min(100, unit.morale + defenderMoraleChange))
-        };
+        return { ...unit, health: Math.max(0, unit.health - defenderDamage), morale: Math.max(0, Math.min(100, unit.morale + defenderMoraleChange)) };
       }
       return unit;
     }));
@@ -243,7 +221,7 @@ export default function App() {
     setExperience(prev => Math.min(maxExperience, prev + 15));
     
     setCombatActive(false);
-    setCombatViewActive(true);
+    setCombatViewActive(false);
   }, [combatData, maxExperience]);
 
   const handleCombatAction = useCallback((action: string) => {
@@ -251,10 +229,7 @@ export default function App() {
     if (action === 'attack') {
       setUnits(prev => prev.map((unit: Unit) => {
         if (unit.id === combatData.defender?.id) {
-          return {
-            ...unit,
-            health: Math.max(0, unit.health - 15)
-          };
+          return { ...unit, health: Math.max(0, unit.health - 15) };
         }
         return unit;
       }));
@@ -264,46 +239,29 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-stone-100">
       <GameHUD
-        playerRank={playerRank}
-        leadership={leadership}
-        experience={experience}
-        maxExperience={maxExperience}
-        turnNumber={turnNumber}
-        missionObjective={missionObjective}
-        missionProgress={missionProgress}
-        onEndTurn={handleEndTurn}
+        playerRank={playerRank} leadership={leadership} experience={experience}
+        maxExperience={maxExperience} turnNumber={turnNumber} missionObjective={missionObjective}
+        missionProgress={missionProgress} onEndTurn={handleEndTurn}
         onPauseGame={() => console.log('Game paused')}
       />
 
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
-        {/* Left Panel - Roster */}
         <div className="w-80 space-y-4">
-          <UnitRoster
-            units={units}
-            onUnitSelect={handleUnitSelect}
-            onSelectAll={handleSelectAll}
-          />
+          <UnitRoster units={units} onUnitSelect={handleUnitSelect} onSelectAll={handleSelectAll} />
         </div>
 
-        {/* Center - Game Board Area */}
         <div className="flex-1 flex items-center justify-center relative">
           <GameBoard
-            units={units}
-            onUnitSelect={handleUnitSelect}
-            onMoveUnit={handleMoveUnit}
-            selectedAction={selectedAction}
-            movableTiles={movableTiles}
-            attackableTiles={attackableTiles}
-            onAbilityUse={handleAbilityUse}
+            units={units} onUnitSelect={handleUnitSelect} onMoveUnit={handleMoveUnit}
+            selectedAction={selectedAction} movableTiles={movableTiles}
+            attackableTiles={attackableTiles} onAbilityUse={handleAbilityUse}
             onActionSelect={handleActionSelect}
           />
         </div>
 
-        {/* Right Panel - Campaign Status */}
         <div className="w-80 bg-gradient-to-b from-stone-200 to-stone-300 rounded-lg p-4 border-2 border-stone-400">
           <h3 className="font-bold mb-4 flex items-center gap-2">
-            <span className="text-2xl">📜</span>
-            Campaign Status
+            <span className="text-2xl">📜</span> Campaign Status
           </h3>
           <div className="space-y-3 text-sm">
             <div className="p-3 bg-white rounded border">
@@ -329,19 +287,14 @@ export default function App() {
       </div>
 
       <CombatResolver
-        isActive={combatActive}
-        attacker={combatData.attacker}
-        defender={combatData.defender}
-        onCombatComplete={handleCombatComplete}
+        isActive={combatActive} attacker={combatData.attacker} defender={combatData.defender}
+        actionType={selectedAction} onCombatComplete={handleCombatComplete}
         onCancel={() => setCombatActive(false)}
       />
 
       <CombatView
-        isActive={combatViewActive}
-        attacker={combatData.attacker}
-        defender={combatData.defender}
-        onExitCombat={() => setCombatViewActive(false)}
-        onCombatAction={handleCombatAction}
+        isActive={combatViewActive} attacker={combatData.attacker} defender={combatData.defender}
+        onExitCombat={() => setCombatViewActive(false)} onCombatAction={handleCombatAction}
       />
     </div>
   );
