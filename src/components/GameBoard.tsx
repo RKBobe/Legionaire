@@ -97,6 +97,8 @@ export function GameBoard({
                     onMouseEnter={() => setHoveredCell({ x, y })}
                     onMouseLeave={() => setHoveredCell(null)}
                     onClick={() => {
+                     
+    
                       if (selectedAction === 'pila_toss' && isAttackable && unitOnCell) {
                         onAbilityUse(unitOnCell);
                       } else if (unitOnCell) {
